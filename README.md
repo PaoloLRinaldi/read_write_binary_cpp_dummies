@@ -15,8 +15,9 @@ int main() {
   // Create the file
   Bin binfile("binfile.bin", false);
 
-  // Write 4 integers
-  binfile.write_many<int>({0, 2, 5, 9});
+  // Write 4 integers (specify the template type ONLY if
+  // you want to cast to different types)
+  binfile.write_many<int>({0.2, 2.7, 5.5, 9.0});
 
   // Place the cursor 3 integers behind
   binfile.rmove_by<int>(-3);
@@ -26,7 +27,7 @@ int main() {
 
   // Print them on the screen
   std::cout << "The first time the numbers are: ";
-  for (a : values) std::cout << a << " ";
+  for (auto a : values) std::cout << a << " ";
   std::cout << std::endl;
 
   // Now let's reverse this three numbers in the file
@@ -39,7 +40,7 @@ int main() {
 
   // Print them on the screen
   std::cout << "The second time the numbers are: ";
-  for (a : values) std::cout << a << " ";
+  for (auto a : values) std::cout << a << " ";
   std::cout << std::endl;
 
   return 0;
@@ -50,5 +51,5 @@ int main() {
 Output:
 ```
 The first time the numbers are: 2 5 9 
-The first time the numbers are: 0 9 5 2 
+The second time the numbers are: 0 9 5 2 
 ```
