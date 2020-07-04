@@ -3,6 +3,8 @@ A simple, intuitive and very little library to read and write binary files.
 
 It allows to manage binary files in a higl-level way.
 
+# Usage
+
 ```C++
 #include <iostream>
 #include <vector>
