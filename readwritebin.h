@@ -1,10 +1,6 @@
 #ifndef READWRITEBIN_H
 #define READWRITEBIN_H
 
-// Questa libreria dovrebbe permettere
-// di semplificare la lettura e la
-// scrittura di file in binario
-
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -16,426 +12,11 @@
 #include <vector>
 #include <iterator>
 
-template <typename T> class ReadBinPtr;
-template <typename T> class WriteBinPtr;
-
-class ReadBin {
-  template <typename T> friend class ReadBinPtr;
-  template <typename T> using iterator = ReadBinPtr<T>;
-  using size_type = std::streamsize;
-
- public:
-  // Il motivo per cui passo come destructor allo shared_ptr
-  // semplicemente una funzione che mette a 0 il puntatore
-  // è che la classe stessa è racchiusa in quel puntatore,
-  // per cui quando viene chiamato il destructor della
-  // classe, quando tocca all' shared_ptr, questo non
-  // cerca di distruggere il contenuto (chiamando
-  // nuovamente il destructor della classe), ma lo
-  // mette = 0 e la classe può continuare il processo
-  // di distruzione evitando che il destructor venga
-  // chiamato più di una volta. Omettendo questo
-  // particolare durante la distruzione dà errore
-  explicit ReadBin(const std::string &filename, bool is_little_endian = true) : fis(filename, std::ios::binary), little_endian(is_little_endian), sptr(this, [] (ReadBin *p) { return p = 0; }) {
-    if (!fis.good() || !fis.is_open())
-      throw std::domain_error("Couldn't open file!");
-    fis.seekg(0, std::ios::end);
-    sz = fis.tellg();
-    fis.seekg(0, std::ios::beg);  // Anche fis.seekg(0); va bene
-  }
-
-  void jump_to(std::streampos point) {
-    if (closed)
-      throw std::domain_error("Can't operate on closed file!");
-    if (point > sz)
-      throw std::domain_error("Can't go past EOF!");
-    fis.seekg(point);
-  }
-
-  void move_by(std::streamoff n) { fis.seekg(n, std::ios::cur); }
-
-  // Setters
-  void set_little_endian(bool is_it) { little_endian = is_it; }
-
-  // Getters
-  size_type size() const {
-    if (closed)
-      throw std::domain_error("Can't tell size of closed file!");
-    return sz;
-  }
-
-  size_type pos() const { return fis.tellg(); }
-
-  // Lettura dei byte del file
-  template <typename T> T get_value() const {
-    if (closed)
-      throw std::domain_error("Can't read from closed file!");
-    char buf[sizeof(T)];
-    fis.read(buf, sizeof(T));
-    // Credo che per i tipi float non cambi nulla little o big endian
-    if (!little_endian && typeid(T) != typeid(double) && typeid(T) != typeid(float))
-      std::reverse(&buf[0], &buf[sizeof(T)]);
-    T *d = reinterpret_cast<T*>(buf);
-    return *d;
-  }
-
-  template <typename T> T get_value(size_type n) {
-    jump_to(n);
-    return get_value<T>();
-  }
-
-  std::string get_string(std::string::size_type len) const {
-    if (closed)
-      throw std::domain_error("Can't read from closed file!");
-    if (len > static_cast<std::string::size_type>(sz - fis.tellg()))
-      throw std::domain_error("Can't read past EOF!");
-
-    char *buf = new char[len + 1];
-    fis.read(buf, len);
-    buf[len] = '\0';
-    std::string ret = buf;
-    delete[] buf;
-    return ret;
-  }
-
-  void close() {
-    fis.close();
-    closed = true;
-  }
-
-  template <typename T> ReadBinPtr<T> begin();
-  template <typename T> ReadBinPtr<T> end();
-
- private:
-  mutable std::ifstream fis;
-  bool little_endian;
-  size_type sz;
-  bool closed = false;
-  std::shared_ptr<ReadBin> sptr;
-};
-
-class WriteBin {
-  template <typename T> friend class WriteBinPtr;
-  template <typename T> using iterator = WriteBinPtr<T>;
-  using size_type = std::streamsize;
-
- public:
-  explicit WriteBin(const std::string &filename, bool truncate = false, bool is_little_endian = true) :
-      little_endian(is_little_endian), sptr(this, [] (WriteBin *p) { return p = 0; }) {
-    if (truncate)
-      // L'unico modo per far funzionare seekp, ovvero jump_to,
-      // è aprire il file con ios::app, ios::in e ios::out insieme,
-      // se no niente. Severamente vietato ios::app, in quel modo
-      // proprio non funziona seekp.
-      // Il file lo apro dentro il corpo e non nella initializer list
-      // perché per qualche motivo non mi prendeva l'operatore "?:"
-      fos.open(filename,
-               std::ios::out |
-               std::ios::in |
-               std::ios::ate | std::ios::trunc);
-    else
-      fos.open(filename,
-               std::ios::out |
-               std::ios::in |
-               std::ios::ate);
-    if (!fos.good() || !fos.is_open())
-      throw std::domain_error("Couldn't open file!");
-  }
-
-  void jump_to(std::streampos point) {
-    if (closed)
-      throw std::domain_error("Can't operate on closed file!");
-    if (point > size())
-      throw std::domain_error("Can't go past EOF!");
-    fos.seekp(point);
-  }
-
-  // Getters
-  size_type size() {
-    if (closed)
-      throw std::domain_error("Can't tell size of closed file!");
-    auto p = fos.tellp();
-    fos.seekp(0, std::ios::end);
-    auto sz = fos.tellp();
-    fos.seekp(p);
-    return sz;
-  }
-  size_type pos() { return fos.tellp(); }
-
-  void move_by(std::streamoff n) { fos.seekp(n, std::ios::cur); }
-
-  template <typename T> void write(T v) {
-    if (closed)
-      throw std::domain_error("Can't write on closed file!");
-    fos.write(reinterpret_cast<char*>(&v), sizeof(T));
-  }
-
-  template <typename T> void write(T v, size_type n) {
-    jump_to(n);
-    write(v);
-  }
-
-  template <typename T> void operator=(T v) { write(v); }
-
-  void write_string(const std::string &v) {
-    if (closed)
-      throw std::domain_error("Can't write on closed file!");
-    fos.write(v.data(), sizeof(char) * v.size());
-  }
-
-
-  void close() {
-    fos.close();
-    closed = true;
-  }
-
-  template <typename T> WriteBinPtr<T> begin();
-  template <typename T> WriteBinPtr<T> end();
-
- private:
-  std::ofstream fos;
-  bool little_endian;  // Non lo ho implementato il big endian :(
-  bool closed = false;
-  std::shared_ptr<WriteBin> sptr;
-};
-
-/********************* ITERATORI **********************/
-
-template <typename T>
-class ReadBinPtr {
-  template <typename K> friend typename std::iterator_traits<ReadBinPtr<K>>::difference_type operator-(const ReadBinPtr<K> &a, const ReadBinPtr<K> &b);
- public:
-  using size_type = ReadBin::size_type;
-  using value_type = T;
-  // typedef typename T value_type;
-
-  ReadBinPtr() : curr(0) { }
-  explicit ReadBinPtr(std::shared_ptr<ReadBin> &a, size_type sz = 0) : wptr(a), curr(sz) { }
-
-  // E' solo lettura, non voglio restituire nessuna reference
-  // (anche perché non parei come farlo)
-  T operator*() const {
-    auto b = check(curr, "dereference past end");
-    return b->template get_value<T>(curr);  // sta cosa è nuova
-  }
-
-  // Increment and decrement operators
-  ReadBinPtr &operator++() {
-    check(curr + sizeof(T), "increment past end of ReadBin");
-    curr += sizeof(T);
-    return *this;
-  }
-
-  ReadBinPtr &operator--() {
-    curr -= sizeof(T);
-    check(curr, "increment past begin of ReadBin");
-    return *this;
-  }
-
-  ReadBinPtr operator++(int) {
-    ReadBinPtr ret = *this;
-    ++*this;
-    return ret;
-  }
-
-  ReadBinPtr operator--(int) {
-    ReadBinPtr ret = *this;
-    --*this;
-    return ret;
-  }
-
-  ReadBinPtr operator+(size_type n) const {
-    auto b = check(curr + sizeof(T) * n, "iterator past end of ReadBin");
-    return ReadBinPtr(b, curr + sizeof(T) * n);
-  }
-
-  ReadBinPtr operator-(size_type n) const {
-    auto b = check(curr - sizeof(T) * n, "iterator past begin of ReadBin");
-    return ReadBinPtr(b, curr - sizeof(T) * n);
-  }
-
-  // Relational operators
-  bool operator==(const ReadBinPtr &rb2) const {
-    auto b1 = wptr.lock();
-    auto b2 = rb2.wptr.lock();
-    if (!b1 || !b2)
-      throw std::runtime_error("something wrong while comparing ReadBinPtr");
-    // Uso std::addressof() per evitare di usare eventualmente
-    // l'"operatore &" nel caso un giorno mi venga di overloadarlo
-    return curr == rb2.curr &&
-                   std::addressof(b1->fis) == std::addressof(b2->fis);
-  }
-
-  bool operator!=(const ReadBinPtr &rb2) const { return !(*this == rb2); }
-
-  // Faccio finta di puntare a dei valori
-  // built-in, non ha senso assegnargli
-  // questo operatore
-  ReadBinPtr operator->() const = delete;
-
- private:
-  std::weak_ptr<ReadBin> wptr;
-  size_type curr;
-
-  std::shared_ptr<ReadBin> check(size_type i, const std::string &msg) const {
-    auto ret = wptr.lock();
-    if (!ret)
-      throw std::runtime_error("Unbound ReadBin");
-    if (ret->closed)
-      throw std::runtime_error("The file was closed!");
-    if (i > ret->size())
-      throw std::out_of_range(msg);
-    return ret;
-  }
-};
-
-template <typename T>
-ReadBinPtr<T> ReadBin::begin() { return ReadBinPtr<T>(sptr); }
-
-template <typename T>
-ReadBinPtr<T> ReadBin::end() { return ReadBinPtr<T>(sptr, size()); }
-
-template <typename T>
-class WriteBinPtr {
-  template <typename K> friend typename std::iterator_traits<WriteBinPtr<K>>::difference_type operator-(const WriteBinPtr<K> &a, const WriteBinPtr<K> &b);
-
- public:
-  using size_type = WriteBin::size_type;
-  using value_type = T;
-  // typedef typename T value_type;
-
-  WriteBinPtr() : curr(0) { }
-  explicit WriteBinPtr(std::shared_ptr<WriteBin> &a, size_type sz = 0) : wptr(a), curr(sz) { }
-
-  // E' solo lettura, non voglio restituire nessuna reference
-  // (anche perché non parei come farlo)
-  WriteBin &operator*() {
-    auto p = check(curr, "something's wrong while dereferencing WriteBinPtr");
-    p->jump_to(curr);
-    return *p;
-  }
-
-  // Increment and decrement operators
-  WriteBinPtr &operator++() {
-    check(curr + sizeof(T), "increment past end of WriteBin");
-    curr += sizeof(T);
-    return *this;
-  }
-
-  WriteBinPtr &operator--() {
-    curr -= sizeof(T);
-    check(curr, "increment past begin of WriteBin");
-    return *this;
-  }
-
-  WriteBinPtr operator++(int) {
-    WriteBinPtr ret = *this;
-    ++*this;
-    return ret;
-  }
-
-  WriteBinPtr operator--(int) {
-    WriteBinPtr ret = *this;
-    --*this;
-    return ret;
-  }
-
-  WriteBinPtr operator+(size_type n) const {
-    auto b = check(curr + sizeof(T) * n, "iterator past end of WriteBin");
-    return WriteBinPtr(b, curr + sizeof(T) * n);
-  }
-
-  WriteBinPtr operator-(size_type n) const {
-    auto b = check(curr - sizeof(T) * n, "iterator past begin of WriteBin");
-    return WriteBinPtr(b, curr - sizeof(T) * n);
-  }
-
-  // Relational operators
-  bool operator==(const WriteBinPtr &rb2) const {
-    auto b1 = wptr.lock();
-    auto b2 = rb2.wptr.lock();
-    if (!b1 || !b2)
-      throw std::runtime_error("something wrong while comparing WriteBinPtr");
-    // Uso std::addressof() per evitare di usare eventualmente
-    // l'"operatore &" nel caso un giorno mi venga di overloadarlo
-    return curr == rb2.curr &&
-                   std::addressof(b1->fos) == std::addressof(b2->fos);
-  }
-
-  bool operator!=(const WriteBinPtr &rb2) const { return !(*this == rb2); }
-
-  // Faccio finta di puntare a dei valori
-  // built-in, non ha senso assegnargli
-  // questo operatore
-  WriteBinPtr operator->() const = delete;
-
- private:
-  std::weak_ptr<WriteBin> wptr;
-  size_type curr;
-
-  std::shared_ptr<WriteBin> check(size_type i, const std::string &msg) const {
-    auto ret = wptr.lock();
-    if (!ret)
-      throw std::runtime_error("Unbound WriteBin");
-    if (ret->closed)
-      throw std::runtime_error("The file was closed!");
-    if (i > ret->size())
-      throw std::out_of_range(msg);
-    return ret;
-  }
-};
-
-template <typename T>
-WriteBinPtr<T> WriteBin::begin() { return WriteBinPtr<T>(sptr); }
-
-template <typename T>
-WriteBinPtr<T> WriteBin::end() { return WriteBinPtr<T>(sptr, size()); }
-
-template <typename T>
-typename std::iterator_traits<ReadBinPtr<T>>::difference_type operator-(const ReadBinPtr<T> &a, const ReadBinPtr<T> &b) {
-  return (a.curr - b.curr) / sizeof(T);
-}
-
-template <typename T>
-typename std::iterator_traits<WriteBinPtr<T>>::difference_type operator-(const WriteBinPtr<T> &a, const WriteBinPtr<T> &b) {
-  return (a.curr - b.curr) / sizeof(T);
-}
-namespace std {
-    template <typename T>
-    struct iterator_traits<ReadBinPtr<T>> {
-        typedef ptrdiff_t difference_type;
-        typedef T value_type;
-        typedef T reference;  // poi vedo meglio se va bene, in genere è T&
-        typedef ReadBinPtr<T> pointer;  // in genere T*
-        typedef std::input_iterator_tag iterator_category;
-    };
-}
-namespace std {
-    template <typename T>
-    struct iterator_traits<WriteBinPtr<T>> {
-      typedef ptrdiff_t difference_type;
-      typedef WriteBin value_type;
-      typedef WriteBin reference;  // poi vedo meglio se va bene, in genere è T&
-      typedef ReadBinPtr<T> pointer;  // in genere T*
-      typedef std::output_iterator_tag iterator_category;
-    };
-}
-
-// ************************************************************
-// *                                                          *
-// *                                                          *
-// *                                                          *
-// *                                                          *
-// *                                                          *
-// *                                                          *
-// *            Read e write contemporaneamente               *
-// *                                                          *
-// *                                                          *
-// *                                                          *
-// *                                                          *
-// *                                                          *
-// *                                                          *
-// ************************************************************
+// *******************************************
+// *                                         *
+// *            Read and write               *
+// *                                         *
+// *******************************************
 
 template <typename T> class BinPtr;
 template <typename T> class TypeBin;
@@ -447,26 +28,14 @@ class Bin {
 
  public:
   using size_type = std::streamsize;
-  // Il motivo per cui passo come destructor allo shared_ptr
-  // semplicemente una funzione che mette a 0 il puntatore
-  // è che la classe stessa è racchiusa in quel puntatore,
-  // per cui quando viene chiamato il destructor della
-  // classe, quando tocca all' shared_ptr, questo non
-  // cerca di distruggere il contenuto (chiamando
-  // nuovamente il destructor della classe), ma lo
-  // mette = 0 e la classe può continuare il processo
-  // di distruzione evitando che il destructor venga
-  // chiamato più di una volta. Omettendo questo
-  // particolare durante la distruzione dà errore
+  // The destructor of the shared_ptr simply puts the pointer
+  // to 0 in rder to avoid infinite loop of destructors
+  // (it would end up destroying itself more than once).
   explicit Bin(const std::string &filename, bool truncate = false, bool is_little_endian = true) :
       little_endian(is_little_endian), sptr(this, [] (Bin *p) { return p = 0; }) {
     if (truncate)
-      // L'unico modo per far funzionare seekp, ovvero jump_to,
-      // è aprire il file con ios::app, ios::in e ios::out insieme,
-      // se no niente. Severamente vietato ios::app, in quel modo
-      // proprio non funziona seekp.
-      // Il file lo apro dentro il corpo e non nella initializer list
-      // perché per qualche motivo non mi prendeva l'operatore "?:"
+      // Files are opened this way because otherwise the seekp
+      // function wouldn't work.
       fs.open(filename,
                std::ios::out |
                std::ios::in |
@@ -483,6 +52,7 @@ class Bin {
   }
 
   void rjump_to(std::streampos point) {
+    // Jump to a location in the file to read.
     if (closed)
       throw std::domain_error("Can't jump and read closed file!");
     if (point > size())
@@ -491,6 +61,9 @@ class Bin {
   }
 
   void wjump_to(std::streampos point) {
+    // Jump to a location in the file to write. The only difference
+    // I found between seekg and seekp is that the former doesn't
+    // allow you to read past EOF.
     if (closed)
       throw std::domain_error("Can't jump and write on closed file!");
     fs.seekp(point);
@@ -498,6 +71,7 @@ class Bin {
 
   // Getters
   size_type size() {
+    // Get size of file
     if (closed)
       throw std::domain_error("Can't tell size of closed file!");
     auto p = fs.tellp();
@@ -506,18 +80,24 @@ class Bin {
     fs.seekp(p);
     return sz;
   }
-  size_type wpos() { return fs.tellp(); }
-  size_type rpos() { return fs.tellg(); }
+  
+  // Get the position you ar currently on (I haven't found a difference
+  // yet)
+  size_type wpos() { return fs.tellp(); }  // Write
+  size_type rpos() { return fs.tellg(); }  // Read
 
+  // Move by a certain number of steps, forward or backward. The size of
+  // the step is deduced by the type specified
   template <typename T = char>
   void wmove_by(std::streamoff n) { fs.seekp(n * sizeof(T), std::ios::cur); }
   template <typename T = char>
   void rmove_by(std::streamoff n) { fs.seekg(n * sizeof(T), std::ios::cur); }
 
-  /**************************
-   * PARTE IN CUI SI SCRIVE *
-   **************************/
+  /***********
+   * WRITING *
+   ***********/
   template <typename T> void write(T v) {
+    // Write a value in the current position
     if (closed)
       throw std::domain_error("Can't write on closed file!");
     char *buf = reinterpret_cast<char*>(&v);
@@ -526,38 +106,48 @@ class Bin {
   }
 
   template <typename T> void write_many(T beg, T end) {
+    // Write multiple values starting from the current position
+    // given two iterators
     for (auto it = beg; it != end; ++it)
       write(*it);
   }
 
-  // Nel caso uno voglia specificare come castare gli elementi
   template <typename K, typename T> void write_many(T beg, T end) {
+    // Same as the function above, but here you can specify the
+    // type you want to cast the values to
     for (auto it = beg; it != end; ++it)
       write<K>(*it);
   }
 
   template <typename T> void write_many(const std::initializer_list<T> &il) {
+    // Write multiple values given an initializer list
     write_many(std::begin(il), std::end(il));
   }
 
-  // Nel caso uno voglia specificare come castare gli elementi
   template <typename K, typename T> void write_many(const std::initializer_list<T> &il) {
+    // In case you want to specify the type you want to cast the values to
     write_many<K>(std::begin(il), std::end(il));
   }
 
   template <typename T>
   void write_many(const T &v) {
+    // Pass the whole container
     for (auto it = std::begin(v); it != std::end(v); ++it)
       write(*it);
   }
 
-  // Nel caso uno voglia specificare come castare gli elementi
   template <typename K, typename T>
   void write_many(const T &v) {
+    // Cast the values
     for (auto it = std::begin(v); it != std::end(v); ++it)
       write<K>(*it);
   }
 
+  /************************
+   * Specify the location *
+   ************************/
+  // Check the functions above for details
+  
   template <typename T> void write(T v, size_type p) {
     wjump_to(p);
     write(v);
@@ -568,7 +158,6 @@ class Bin {
     write_many(v);
   }
 
-  // Nel caso uno voglia specificare come castare gli elementi
   template <typename K, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
     wjump_to(p);
     write_many<K>(v);
@@ -579,7 +168,6 @@ class Bin {
     write_many(beg, end);
   }
 
-  // Nel caso uno voglia specificare come castare gli elementi
   template <typename K, typename T> void write_many(T beg, T end, size_type p) {
     wjump_to(p);
     write_many<K>(beg, end);
@@ -592,7 +180,6 @@ class Bin {
       write(*it);
   }
 
-  // Nel caso uno voglia specificare come castare gli elementi
   template <typename K, typename T>
   void write_many(const T &v, size_type p) {
     wjump_to(p);
@@ -604,27 +191,30 @@ class Bin {
   template <typename T> operator T() { return get_value<T>(); }
 
   void write_string(const std::string &v) {
+    // Write a string to the current location
     if (closed)
       throw std::domain_error("Can't write string on closed file!");
     fs.write(v.data(), sizeof(char) * v.size());
   }
   void write_string(const std::string &v, size_type p) {
+    // Write a string to the specified location
     wjump_to(p);
     write_string(v);
   }
 
-  /*************************
-   * PARTE IN CUI SI LEGGE *
-   *************************/
-  // Lettura dei byte del file
+  /***********
+   * READING *
+   ***********/
+  
   template <typename T = unsigned char> T get_value() {
+    // Get a value from the current location of the specified type
     if (closed)
       throw std::domain_error("Can't read from closed file!");
     if (static_cast<decltype(sizeof(T))>(size() - rpos()) < sizeof(T))
       throw std::runtime_error("Trying to read past EOF!");
     char buf[sizeof(T)];
     fs.read(buf, sizeof(T));
-    // Credo che per i tipi float non cambi nulla little o big endian
+    // For float types, the behaviour of little and big endian is the same
     if (!little_endian && typeid(T) != typeid(double) && typeid(T) != typeid(float))
       std::reverse(&buf[0], &buf[sizeof(T)]);
     T *d = reinterpret_cast<T*>(buf);
@@ -632,6 +222,7 @@ class Bin {
   }
 
   template <typename T = unsigned char> std::vector<T> get_values(size_type n) {
+    // Get multiple values from the current location
     if (closed)
       throw std::domain_error("Can't write on closed file!");
     if (static_cast<decltype(sizeof(T))>(size() - rpos()) < sizeof(T) * n)
@@ -650,16 +241,19 @@ class Bin {
   }
 
   template <typename T = unsigned char> T get_value(size_type p) {
+    // Get a value from the specified location
     rjump_to(p);
     return get_value<T>();
   }
 
   template <typename T = unsigned char> std::vector<T> get_values(size_type n, size_type p) {
+    // Get multiple values from the specified location
     rjump_to(p);
     return get_values<T>(n);
   }
 
   std::string get_string(std::string::size_type len) {
+    // Read a string from the current location
     if (closed)
       throw std::domain_error("Can't read string from closed file!");
     if (len > static_cast<std::string::size_type>(size() - fs.tellg()))
@@ -674,6 +268,7 @@ class Bin {
   }
 
   std::string get_string(std::string::size_type len, size_type p) {
+    // Read a string from the specified location
     rjump_to(p);
     return get_string(len);
   }
@@ -695,14 +290,20 @@ class Bin {
   std::shared_ptr<Bin> sptr;
 };
 
-/*************** ITERATORE *******************/
-// PER SCRIVERE FILE GRANDI EVITARE L'ITERATORE
-// CHE E' MOLTO LENTO. DA USARE SOLO PER
-// COMODITA'/ELEGANZA
+/*************** ITERATOR *******************/
+/* +++++++++++++++ WARNING +++++++++++++++++
+THE IMPLEMENTED ITERATOR IS EXTREMELY SLOWER.
+IT IS HIGHLY DISCOURAGED ITS USE TO DEAL WITH
+BIG FILES OR TO COMPUTE MANY OPERATIONS.
+ITS USE IS RECOMMENDED FOR ELECANGE PURPOSE ONLY
++++++++++++++++++++++++++++++++++++++++++++++++ */
 
-// QUESTA CLASSE SERVE COME PASSAGGIO INTERMEDIO
-// PER TRATTARE I BinPtr DEREFERENZIATI COME
-// SE FOSSERO DELLE REFERENCE A LVALUE
+
+// The purpose if the following class is to
+// treat differentiated BinPtr as they were
+// reference to lvalue, which they clearly
+// aren't
+
 template <typename T>
 class TypeBin {
   template <typename K> friend void swap(TypeBin<K> &a, TypeBin<K> &b);
@@ -710,8 +311,11 @@ class TypeBin {
 
  public:
   explicit TypeBin(Bin &b, std::streamsize i) : tmp_b(b), curr(i) { }
-
+  
+  // Getting a value from a differentiated pointed
   operator T() & { return tmp_b.get_value<T>(curr); }
+  
+  // Setting a value to a differentiated pointer
   void operator=(T a) & { tmp_b.template write<T>(a, curr); }
 
  private:
@@ -728,10 +332,11 @@ inline void swap(TypeBin<T> &a, TypeBin<T> &b) {
   b.tmp_b.template write<T>(tmp, b.curr);
 }
 
+// The actual pointer class
 template <typename T>
 class BinPtr {
   template <typename K> friend typename std::iterator_traits<BinPtr<K>>::difference_type operator-(const BinPtr<K> &a, const BinPtr<K> &b);
-template <typename K> friend bool operator<(const BinPtr<K> &ptr1, const BinPtr<K> &ptr2);
+  template <typename K> friend bool operator<(const BinPtr<K> &ptr1, const BinPtr<K> &ptr2);
 
  public:
   using size_type = Bin::size_type;
@@ -740,11 +345,7 @@ template <typename K> friend bool operator<(const BinPtr<K> &ptr1, const BinPtr<
   BinPtr() : curr(0) { }
   explicit BinPtr(std::shared_ptr<Bin> &a, size_type sz = 0) : wptr(a), curr(sz), tb(*a, curr) { }
 
-  // IN REALTA' VORREI CHE RETURNASSE TypeBin<T> &&
   TypeBin<T> &operator*() {
-    // Visto che magari voglio scrivere più avanti, non
-    // voglio fare controlli sulla dimensione, ma solo
-    // sull'esistenza
     auto p = check(0, "");
     p->wjump_to(curr);
     tb.set_curr(curr);
@@ -754,20 +355,12 @@ template <typename K> friend bool operator<(const BinPtr<K> &ptr1, const BinPtr<
 
   // Increment and decrement operators
   BinPtr &operator++() {
-    // Visto che magari voglio scrivere più avanti, non
-    // voglio fare controlli sulla dimensione, ma solo
-    // sull'esistenza
-    check(0, "");  // Questo fa perdere circa il 30% di velocità
+    check(0, "");  // This step decreases the speed by about 30%. Unfortunately it's needed
     curr += sizeof(T);
     return *this;
   }
 
   BinPtr &operator--() {
-    // Visto che magari stavo molto avanti rispetto
-    // alla fine e voglio poter andare indietro di 1
-    // stando ancora oltre la fine per poi scrivere
-    // controllo solo che non decrementi prima dello
-    // inizio
     if (curr < sizeof(T))
       throw std::out_of_range("decrement past begin of Bin");
     curr -= sizeof(T);
@@ -802,17 +395,14 @@ template <typename K> friend bool operator<(const BinPtr<K> &ptr1, const BinPtr<
     auto b2 = wrb2.wptr.lock();
     if (!b1 || !b2)
       throw std::runtime_error("comparing invalid BinPtr(s)");
-    // Uso std::addressof() per evitare di usare eventualmente
-    // l'"operatore &" nel caso un giorno mi venga di overloadarlo
     return curr == wrb2.curr &&
                    std::addressof(b1->fs) == std::addressof(b2->fs);
   }
 
   bool operator!=(const BinPtr &wrb2) const { return !(*this == wrb2); }
 
-  // Faccio finta di puntare a dei valori
-  // built-in, non ha senso assegnargli
-  // questo operatore
+  // Since this class handles built-in types, I
+  // don't want to allow the -> operator.
   BinPtr operator->() const = delete;
 
  private:
@@ -821,6 +411,7 @@ template <typename K> friend bool operator<(const BinPtr<K> &ptr1, const BinPtr<
   TypeBin<T> tb;
 
   std::shared_ptr<Bin> check(size_type i, const std::string &msg) const {
+    // Various checks
     auto ret = wptr.lock();
     if (!ret)
       throw std::runtime_error("Unbound Bin");
@@ -849,6 +440,9 @@ typename std::iterator_traits<BinPtr<T>>::difference_type operator-(const BinPtr
   return (a.curr - b.curr) / sizeof(T);
 }
 
+// This "iterator_traits" part has been written with the only
+// goal to make the code work, being aware that this could further affect
+// negatively its already lacking cleanliness
 namespace std {
     template <typename T>
     struct iterator_traits<BinPtr<T>> {
