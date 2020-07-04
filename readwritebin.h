@@ -11,6 +11,7 @@
 #include <initializer_list>
 #include <vector>
 #include <iterator>
+#include <sys/stat.h>
 
 // *******************************************
 // *                                         *
@@ -33,7 +34,9 @@ class Bin {
   // (it would end up destroying itself more than once).
   explicit Bin(const std::string &filename, bool truncate = false, bool is_little_endian = true) :
       little_endian(is_little_endian), sptr(this, [] (Bin *p) { return p = 0; }) {
-    if (truncate)
+    struct stat buffer;
+    bool already_exists = stat(filename.c_str(), &buffer) == 0;
+    if (truncate || !already_exists)
       // Files are opened this way because otherwise the seekp
       // function wouldn't work.
       fs.open(filename,
