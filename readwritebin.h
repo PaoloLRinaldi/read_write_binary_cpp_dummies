@@ -361,7 +361,7 @@ class BinPtr {
   }
 
   BinPtr &operator--() {
-    if (curr < sizeof(T))
+    if (curr < static_cast<long int>(sizeof(T)))
       throw std::out_of_range("decrement past begin of Bin");
     curr -= sizeof(T);
     return *this;
