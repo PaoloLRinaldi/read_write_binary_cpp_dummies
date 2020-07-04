@@ -12,8 +12,9 @@ It allows to manage binary files in a higl-level way.
 #include "readwritebin.h"
 
 int main() {
-  // Create the file
-  Bin binfile("binfile.bin", false);
+  // Create the file. If it doesn't exist, set
+  // truncate to true
+  Bin binfile("binfile.bin", true);
 
   // Write 4 integers (specify the template type ONLY if
   // you want to cast to different types)
