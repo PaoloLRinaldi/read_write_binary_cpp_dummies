@@ -15,7 +15,9 @@ int main() {
   // Create the file
   Bin binfile("binfile.bin");
 
-  // Write 4 integers
+  // Write 4 integers (since the values
+  // are already integers you can omit the
+  // "<int>" specification)
   binfile.write_many<int>({0, 2, 5, 9});
 
   // Place the cursor 3 integers behind
@@ -52,3 +54,6 @@ Output:
 The first time the numbers are: 2 5 9 
 The second time the numbers are: 0 9 5 2 
 ```
+
+# Requirements
+C++11
