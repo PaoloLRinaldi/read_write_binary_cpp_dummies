@@ -15,9 +15,8 @@ int main() {
   // Create the file
   Bin binfile("binfile.bin");
 
-  // Write 4 integers (specify the template type ONLY if
-  // you want to cast to different types)
-  binfile.write_many<int>({0.2, 2.7, 5.5, 9.0});
+  // Write 4 integers
+  binfile.write_many<int>({0, 2, 5, 9});
 
   // Place the cursor 3 integers behind
   binfile.rmove_by<int>(-3);
