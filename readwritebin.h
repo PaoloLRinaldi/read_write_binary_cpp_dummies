@@ -12,6 +12,7 @@
 #include <vector>
 #include <iterator>
 #include <sys/stat.h>
+#include <type_traits>
 
 // *******************************************
 // *                                         *
@@ -22,7 +23,7 @@
 // The following class is simply a reference
 // type and it is used as default type for
 // some template functions
-class BinCheckType {};
+class TypeNotSpecified {};
 
 template <typename T> class BinPtr;
 template <typename T> class TypeBin;
@@ -127,16 +128,16 @@ class Bin {
       write<K>(*it);
   }
 
-  template <typename K = BinCheckType, typename T> void write_many(const std::initializer_list<T> &il) {
+  template <typename K = TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &il) {
     /*
     // IN C++17 I WOULD HAVE DONE THE FOLLOWING
-    if constexpr(std::is_same<K, void>::value) {
+    if constexpr(std::is_same<K, BinCheckType>::value) {
 	    write_many(std::begin(il), std::end(il));
     } else {
 	    write_many<K>(std::begin(il), std::end(il));
     }
     */
-    is_initializer_list_cast_specified<K, T>(std::integral_constant<bool, std::is_same<K, BinCheckType>::value>{}, il);
+    is_initializer_list_cast_specified<K, T>(std::integral_constant<bool, std::is_same<K, TypeNotSpecified>::value>{}, il);
   }
 
   template <typename T>
@@ -163,7 +164,7 @@ class Bin {
     write(v);
   }
 
-  template <typename K = BinCheckType, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
+  template <typename K = TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
     wjump_to(p);
     write_many<K>(v);
   }
