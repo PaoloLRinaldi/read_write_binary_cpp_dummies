@@ -122,14 +122,16 @@ class Bin {
       write<K>(*it);
   }
 
-  template <typename T> void write_many(const std::initializer_list<T> &il) {
-    // Write multiple values given an initializer list
-    write_many(std::begin(il), std::end(il));
-  }
-
-  template <typename K, typename T> void write_many(const std::initializer_list<T> &il) {
-    // In case you want to specify the type you want to cast the values to
-    write_many<K>(std::begin(il), std::end(il));
+  template <typename K = void, typename T> void write_many(const std::initializer_list<T> &il) {
+    /*
+    // IN C++17 I WOULD HAVE DONE THE FOLLOWING
+    if constexpr(std::is_same<K, void>::value) {
+	    write_many(std::begin(il), std::end(il));
+    } else {
+	    write_many<K>(std::begin(il), std::end(il));
+    }
+    */
+    is_initializer_list_cast_specified<K, T>(std::integral_constant<bool, std::is_same<K, void>::value>{}, il);
   }
 
   template <typename T>
@@ -156,12 +158,7 @@ class Bin {
     write(v);
   }
 
-  template <typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
-    wjump_to(p);
-    write_many(v);
-  }
-
-  template <typename K, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
+  template <typename K = void, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
     wjump_to(p);
     write_many<K>(v);
   }
@@ -291,12 +288,30 @@ class Bin {
   bool little_endian;
   bool closed = false;
   std::shared_ptr<Bin> sptr;
+  
+  // The following two functions handle the case when the user passes
+  // an initializer_list to write_many. The first one is called when
+  // he doesn't specify a casting type, the second one is called when
+  // he does. Check the function
+  // template <typename K = void, typename T> write_many(const std::initializer_list<T> &il)
+  // to see how they are called
+  template <typename K, typename T>
+  void is_initializer_list_cast_specified(std::true_type, const std::initializer_list<T>& il) {
+    write_many(std::begin(il), std::end(il));
+  }
+  
+  template <typename K, typename T>
+  void is_initializer_list_cast_specified(std::false_type, const std::initializer_list<T>& il) {
+    write_many<K>(std::begin(il), std::end(il));
+  }
+
+
 };
 
 /*************** ITERATOR *******************/
 /* +++++++++++++++ WARNING +++++++++++++++++
 THE IMPLEMENTED ITERATOR IS EXTREMELY SLOWER.
-IT IS HIGHLY DISCOURAGED ITS USE TO DEAL WITH
+IT IS STRONGLY DISCOURAGED ITS USE TO DEAL WITH
 BIG FILES OR TO COMPUTE MANY OPERATIONS.
 ITS USE IS RECOMMENDED FOR ELECANGE PURPOSE ONLY
 +++++++++++++++++++++++++++++++++++++++++++++++ */
