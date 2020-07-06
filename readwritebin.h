@@ -472,8 +472,8 @@ namespace std {
     struct iterator_traits<BinPtr<T>> {
       typedef ptrdiff_t difference_type;
       typedef TypeBin<T>&& value_type;
-      typedef TypeBin<T>&& reference;  // poi vedo meglio se va bene, in genere è T&
-      typedef BinPtr<T> pointer;  // in genere T*
+      typedef TypeBin<T>&& reference;  // In general it whould be T&
+      typedef BinPtr<T> pointer;  // In general it should be T*
       typedef std::random_access_iterator_tag iterator_category;
     };
 }
