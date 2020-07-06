@@ -36,7 +36,7 @@ class Bin {
  public:
   using size_type = std::streamsize;
   // The destructor of the shared_ptr simply puts the pointer
-  // to 0 in rder to avoid infinite loop of destructors
+  // to 0 in order to avoid infinite loop of destructors
   // (it would end up destroying itself more than once).
   explicit Bin(const std::string &filename, bool truncate = false, bool is_little_endian = true) :
       little_endian(is_little_endian), sptr(this, [] (Bin *p) { return p = 0; }) {
@@ -131,7 +131,7 @@ class Bin {
   template <typename K = TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &il) {
     /*
     // IN C++17 I WOULD HAVE DONE THE FOLLOWING
-    if constexpr(std::is_same<K, BinCheckType>::value) {
+    if constexpr(std::is_same<K, TypeNotSpecified>::value) {
 	    write_many(std::begin(il), std::end(il));
     } else {
 	    write_many<K>(std::begin(il), std::end(il));
@@ -221,7 +221,7 @@ class Bin {
     char buf[sizeof(T)];
     fs.read(buf, sizeof(T));
     // For float types, the behaviour of little and big endian is the same
-    if (!little_endian && typeid(T) != typeid(double) && typeid(T) != typeid(float))
+    if (!little_endian && !std::is_floating_point<T>::value)
       std::reverse(&buf[0], &buf[sizeof(T)]);
     T *d = reinterpret_cast<T*>(buf);
     return *d;
@@ -237,7 +237,7 @@ class Bin {
     fs.read(buf, sizeof(T) * n);
     std::vector<T> ret(n);
 
-    if (!little_endian && typeid(T) != typeid(double) && typeid(T) != typeid(float)) {
+    if (!little_endian && !std::is_floating_point<T>::value) {
       for (int i = 0; i != n; ++i)
         std::reverse(&buf[i * sizeof(T)], &buf[(i + 1) * sizeof(T)]);
     }
