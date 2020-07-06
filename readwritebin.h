@@ -12,12 +12,18 @@
 #include <vector>
 #include <iterator>
 #include <sys/stat.h>
+#include <type_traits>
 
 // *******************************************
 // *                                         *
 // *            Read and write               *
 // *                                         *
 // *******************************************
+
+// The following class is simply a reference
+// type and it is used as default type for
+// some template functions
+class TypeNotSpecified {};
 
 template <typename T> class BinPtr;
 template <typename T> class TypeBin;
@@ -30,7 +36,7 @@ class Bin {
  public:
   using size_type = std::streamsize;
   // The destructor of the shared_ptr simply puts the pointer
-  // to 0 in rder to avoid infinite loop of destructors
+  // to 0 in order to avoid infinite loop of destructors
   // (it would end up destroying itself more than once).
   explicit Bin(const std::string &filename, bool truncate = false, bool is_little_endian = true) :
       little_endian(is_little_endian), sptr(this, [] (Bin *p) { return p = 0; }) {
@@ -122,14 +128,16 @@ class Bin {
       write<K>(*it);
   }
 
-  template <typename T> void write_many(const std::initializer_list<T> &il) {
-    // Write multiple values given an initializer list
-    write_many(std::begin(il), std::end(il));
-  }
-
-  template <typename K, typename T> void write_many(const std::initializer_list<T> &il) {
-    // In case you want to specify the type you want to cast the values to
-    write_many<K>(std::begin(il), std::end(il));
+  template <typename K = TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &il) {
+    /*
+    // IN C++17 I WOULD HAVE DONE THE FOLLOWING
+    if constexpr(std::is_same<K, TypeNotSpecified>::value) {
+	    write_many(std::begin(il), std::end(il));
+    } else {
+	    write_many<K>(std::begin(il), std::end(il));
+    }
+    */
+    is_initializer_list_cast_specified<K, T>(std::integral_constant<bool, std::is_same<K, TypeNotSpecified>::value>{}, il);
   }
 
   template <typename T>
@@ -156,12 +164,7 @@ class Bin {
     write(v);
   }
 
-  template <typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
-    wjump_to(p);
-    write_many(v);
-  }
-
-  template <typename K, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
+  template <typename K = TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
     wjump_to(p);
     write_many<K>(v);
   }
@@ -218,7 +221,7 @@ class Bin {
     char buf[sizeof(T)];
     fs.read(buf, sizeof(T));
     // For float types, the behaviour of little and big endian is the same
-    if (!little_endian && typeid(T) != typeid(double) && typeid(T) != typeid(float))
+    if (!little_endian && !std::is_floating_point<T>::value)
       std::reverse(&buf[0], &buf[sizeof(T)]);
     T *d = reinterpret_cast<T*>(buf);
     return *d;
@@ -234,7 +237,7 @@ class Bin {
     fs.read(buf, sizeof(T) * n);
     std::vector<T> ret(n);
 
-    if (!little_endian && typeid(T) != typeid(double) && typeid(T) != typeid(float)) {
+    if (!little_endian && !std::is_floating_point<T>::value) {
       for (int i = 0; i != n; ++i)
         std::reverse(&buf[i * sizeof(T)], &buf[(i + 1) * sizeof(T)]);
     }
@@ -291,12 +294,30 @@ class Bin {
   bool little_endian;
   bool closed = false;
   std::shared_ptr<Bin> sptr;
+  
+  // The following two functions handle the case when the user passes
+  // an initializer_list to write_many. The first one is called when
+  // he doesn't specify a casting type, the second one is called when
+  // he does. Check the function
+  // template <typename K = void, typename T> write_many(const std::initializer_list<T> &il)
+  // to see how they are called
+  template <typename K, typename T>
+  void is_initializer_list_cast_specified(std::true_type, const std::initializer_list<T>& il) {
+    write_many(std::begin(il), std::end(il));
+  }
+  
+  template <typename K, typename T>
+  void is_initializer_list_cast_specified(std::false_type, const std::initializer_list<T>& il) {
+    write_many<K>(std::begin(il), std::end(il));
+  }
+
+
 };
 
 /*************** ITERATOR *******************/
 /* +++++++++++++++ WARNING +++++++++++++++++
 THE IMPLEMENTED ITERATOR IS EXTREMELY SLOWER.
-IT IS HIGHLY DISCOURAGED ITS USE TO DEAL WITH
+IT IS STRONGLY DISCOURAGED ITS USE TO DEAL WITH
 BIG FILES OR TO COMPUTE MANY OPERATIONS.
 ITS USE IS RECOMMENDED FOR ELECANGE PURPOSE ONLY
 +++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -451,8 +472,8 @@ namespace std {
     struct iterator_traits<BinPtr<T>> {
       typedef ptrdiff_t difference_type;
       typedef TypeBin<T>&& value_type;
-      typedef TypeBin<T>&& reference;  // poi vedo meglio se va bene, in genere è T&
-      typedef BinPtr<T> pointer;  // in genere T*
+      typedef TypeBin<T>&& reference;  // In general it whould be T&
+      typedef BinPtr<T> pointer;  // In general it should be T*
       typedef std::random_access_iterator_tag iterator_category;
     };
 }
