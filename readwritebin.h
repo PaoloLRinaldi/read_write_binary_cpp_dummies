@@ -20,11 +20,6 @@
 // *                                         *
 // *******************************************
 
-// The following class is simply a reference
-// type and it is used as default type for
-// some template functions
-class TypeNotSpecified {};
-
 template <typename T> class BinPtr;
 template <typename T> class TypeBin;
 
@@ -34,7 +29,12 @@ class Bin {
   template <typename T> using iterator = BinPtr<T>;
 
  public:
+  // The following class is simply a reference
+  // type and it is used as default type for
+  // some template functions
+  class TypeNotSpecified {};
   using size_type = std::streamsize;
+
   // The destructor of the shared_ptr simply puts the pointer
   // to 0 in order to avoid infinite loop of destructors
   // (it would end up destroying itself more than once).
@@ -128,16 +128,16 @@ class Bin {
       write<K>(*it);
   }
 
-  template <typename K = TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &il) {
+  template <typename K = Bin::TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &il) {
     /*
     // IN C++17 I WOULD HAVE DONE THE FOLLOWING
-    if constexpr(std::is_same<K, TypeNotSpecified>::value) {
+    if constexpr(std::is_same<K, Bin::TypeNotSpecified>::value) {
 	    write_many(std::begin(il), std::end(il));
     } else {
 	    write_many<K>(std::begin(il), std::end(il));
     }
     */
-    is_initializer_list_cast_specified<K, T>(std::integral_constant<bool, std::is_same<K, TypeNotSpecified>::value>{}, il);
+    is_initializer_list_cast_specified<K, T>(std::integral_constant<bool, std::is_same<K, Bin::TypeNotSpecified>::value>{}, il);
   }
 
   template <typename T>
@@ -164,7 +164,7 @@ class Bin {
     write(v);
   }
 
-  template <typename K = TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
+  template <typename K = Bin::TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
     wjump_to(p);
     write_many<K>(v);
   }
@@ -299,7 +299,7 @@ class Bin {
   // an initializer_list to write_many. The first one is called when
   // he doesn't specify a casting type, the second one is called when
   // he does. Check the function
-  // template <typename K = void, typename T> write_many(const std::initializer_list<T> &il)
+  // template <typename K = Bin::TypeNotSpecified, typename T> write_many(const std::initializer_list<T> &il)
   // to see how they are called
   template <typename K, typename T>
   void is_initializer_list_cast_specified(std::true_type, const std::initializer_list<T>& il) {
