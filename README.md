@@ -1,7 +1,7 @@
 # read_write_binary_cpp_dummies
 A simple, intuitive and very little library to read and write binary files.
 
-It allows to manage binary files in a higl-level way.
+It allows to manage binary files in a high-level way.
 
 # Usage
 
