@@ -38,8 +38,8 @@ class Bin {
   // The destructor of the shared_ptr simply puts the pointer
   // to 0 in order to avoid infinite loop of destructors
   // (it would end up destroying itself more than once).
-  explicit Bin(const std::string &filename, bool truncate = false, bool is_little_endian = true) :
-      little_endian(is_little_endian), sptr(this, [] (Bin *p) { return p = 0; }) {
+  explicit Bin(const std::string &fname, bool truncate = false, bool is_little_endian = true) :
+      filename(fname), little_endian(is_little_endian), sptr(this, [] (Bin *p) { return p = 0; }) {
     struct stat buffer;
     bool already_exists = stat(filename.c_str(), &buffer) == 0;
     if (truncate || !already_exists)
@@ -286,11 +286,14 @@ class Bin {
     closed = true;
   }
 
+  std::string get_filename() const { return filename; }
+
   template <typename T> BinPtr<T> begin();
   template <typename T> BinPtr<T> end();
 
  private:
   std::fstream fs;
+  const std::string filename;
   bool little_endian;
   bool closed = false;
   std::shared_ptr<Bin> sptr;
