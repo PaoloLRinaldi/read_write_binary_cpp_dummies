@@ -299,7 +299,7 @@ class Bin {
    */
   template <typename T> void write(T val, size_type p) {
     wjump_to(p);
-    write(v);
+    write(val);
   }
 
 
