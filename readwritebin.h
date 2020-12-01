@@ -29,17 +29,37 @@ class Bin {
   template <typename T> using iterator = BinPtr<T>;
 
  public:
-  // The following class is simply a reference
-  // type and it is used as default type for
-  // some template functions
+  /*! An empty class.
+   *
+   * This class is used as default type for
+   * some template functions and it is used to understand
+   * if the template parameter is omitted.
+   */
   class TypeNotSpecified {};
+
+  //! The type used to indicate positions inside the file
   using size_type = std::streamsize;
 
   // The destructor of the shared_ptr simply puts the pointer
   // to 0 in order to avoid infinite loop of destructors
   // (it would end up destroying itself more than once).
-  explicit Bin(const std::string &fname, bool truncate = false, bool is_little_endian = true) :
-      filename(fname), little_endian(is_little_endian), sptr(this, [] (Bin *p) { return p = 0; }) {
+  /*! The constructor
+   *
+   * The destructor of the shared_ptr simply puts the pointer
+   * to 0 in order to avoid infinite loop of destructors
+   * (it would end up destroying itself more than once).
+   *
+   * \param fname             The filename. If the file doesn't exist it is created
+   * \param truncate          If set to true and the file already exists it is cleared. The default value is false.
+   * \param use_little_endian
+   * \parblock
+   * Decide if you want to read/write in little_endian.
+   * By default it is set to the default endianness of the machine.
+   * \endparblock
+   */
+  explicit Bin(const std::string &fname, bool truncate = false, bool use_little_endian = Bin::is_default_little_endian()) :
+      filename(fname), sptr(this, [] (Bin *p) { return p = 0; }) {
+    opposite_endian = use_little_indian != Bin::is_default_little_endian();
     struct stat buffer;
     bool already_exists = stat(filename.c_str(), &buffer) == 0;
     if (truncate || !already_exists)
@@ -60,8 +80,30 @@ class Bin {
     rjump_to(0);
   }
 
+  /*! Tells if the machine is little endian (true)
+   * or big endian (false)
+   */
+  static bool is_default_little_endian() {
+    short int n = 1;
+    char *address = reinterpret_cast<char*>(&n);
+    if (*(address + 1) == 1) return false;
+    else if (*address == 1) return true;
+    throw std::domain_error("Can't detect endianness of the machine!");
+  }
+
+  /*! Returns the number of bytes occupied by n_steps instances of T
+   * \tparam T The type T
+   * \param n_steps The number of instances of an object of type T
+   */
+  template <typename T> static constexpr size_type bytes(size_type n_steps) {
+    return sizeof(T) * n_steps;
+  }
+
+  /*! Jump to a location in the file to read
+   *
+   * \param point The point (in bytes) where you want to jump
+   */
   void rjump_to(std::streampos point) {
-    // Jump to a location in the file to read.
     if (closed)
       throw std::domain_error("Can't jump and read closed file!");
     if (point > size())
@@ -69,18 +111,23 @@ class Bin {
     fs.seekg(point);
   }
 
+  /*! Jump to a location in the file to write
+   *
+   * The only difference I found between seekg and seekp is
+   * that the former doesn't allow you to read past EOF.
+   *
+   * \param point The point (in bytes) where you want to jump
+   */
   void wjump_to(std::streampos point) {
-    // Jump to a location in the file to write. The only difference
-    // I found between seekg and seekp is that the former doesn't
-    // allow you to read past EOF.
     if (closed)
       throw std::domain_error("Can't jump and write on closed file!");
     fs.seekp(point);
   }
 
   // Getters
+
+  /*! Get the size of the file */
   size_type size() {
-    // Get size of file
     if (closed)
       throw std::domain_error("Can't tell size of closed file!");
     auto p = fs.tellp();
@@ -90,44 +137,70 @@ class Bin {
     return sz;
   }
   
-  // Get the position you ar currently on (I haven't found a difference
-  // yet)
-  size_type wpos() { return fs.tellp(); }  // Write
-  size_type rpos() { return fs.tellg(); }  // Read
+  /*! Get the position you ar currently on (write) */
+  size_type wpos() { return fs.tellp(); }
 
-  // Move by a certain number of steps, forward or backward. The size of
-  // the step is deduced by the type specified
+  /*! Get the position you ar currently on (read) */
+  /*! It seems to be identical to the write version */
+  size_type rpos() { return fs.tellg(); }
+
+  /*! Move by a certain number of steps, forward or backward.
+   * The size of the step is deduced by the type specified
+   * \param n The number of steps
+   */
   template <typename T = char>
-  void wmove_by(std::streamoff n) { fs.seekp(n * sizeof(T), std::ios::cur); }
+  void wmove_by(std::streamoff n) { fs.seekp(bytes<T>(n), std::ios::cur); }
+
+  /*! Move by a certain number of steps, forward or backward.
+   * The size of the step is deduced by the type specified
+   * \param n The number of steps
+   */
   template <typename T = char>
-  void rmove_by(std::streamoff n) { fs.seekg(n * sizeof(T), std::ios::cur); }
+  void rmove_by(std::streamoff n) { fs.seekg(bytes<T>(n), std::ios::cur); }
 
   /***********
    * WRITING *
    ***********/
+
+  /*! Write a value in the current position
+   * \param v The value you want to write
+   */
   template <typename T> void write(T v) {
-    // Write a value in the current position
     if (closed)
       throw std::domain_error("Can't write on closed file!");
     char *buf = reinterpret_cast<char*>(&v);
-    if (!little_endian) std::reverse(buf, buf + sizeof(T));
+    if (opposite_endian) std::reverse(buf, buf + sizeof(T));
     fs.write(buf, sizeof(T));
   }
 
+  /*! Write multiple values starting from the current position
+   * given two iterators.
+   * \param beg The beginning interator
+   * \param end The ending interator
+   */
   template <typename T> void write_many(T beg, T end) {
-    // Write multiple values starting from the current position
-    // given two iterators
     for (auto it = beg; it != end; ++it)
       write(*it);
   }
 
+  /*! Write multiple values starting from the current position
+   * given two iterators.
+   * If you want, this implementation allows you to specify the
+   * type you want to cast the values to
+   * \param beg The beginning interator
+   * \param end The ending interator
+   */
   template <typename K, typename T> void write_many(T beg, T end) {
-    // Same as the function above, but here you can specify the
-    // type you want to cast the values to
     for (auto it = beg; it != end; ++it)
       write<K>(*it);
   }
 
+  /*! Write multiple values starting from the current position
+   * given an initializer list.
+   * If you want, this implementation allows you to specify the
+   * type you want to cast the values to
+   * \param il The initializer list
+   */
   template <typename K = Bin::TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &il) {
     /*
     // IN C++17 I WOULD HAVE DONE THE FOLLOWING
@@ -140,45 +213,90 @@ class Bin {
     is_initializer_list_cast_specified<K, T>(std::integral_constant<bool, std::is_same<K, Bin::TypeNotSpecified>::value>{}, il);
   }
 
+  /*! Write multiple values starting from the current position
+   * given a container.
+   * \param v The container
+   */
   template <typename T>
   void write_many(const T &v) {
-    // Pass the whole container
     for (auto it = std::begin(v); it != std::end(v); ++it)
       write(*it);
   }
 
+
+  /*! Write multiple values starting from the current position
+   * given a container.
+   * If you want, this implementation allows you to specify the
+   * type you want to cast the values to
+   * \param v The container
+   */
   template <typename K, typename T>
   void write_many(const T &v) {
-    // Cast the values
     for (auto it = std::begin(v); it != std::end(v); ++it)
       write<K>(*it);
   }
 
-  /************************
-   * Specify the location *
-   ************************/
+  /**************************************
+   * Specify the location where to write*
+   **************************************/
   // Check the functions above for details
-  
+ 
+
+  /*! Write a value in the specified position
+   * \param v The value you want to write
+   * \param p The position where you want to write
+   */
   template <typename T> void write(T v, size_type p) {
     wjump_to(p);
     write(v);
   }
 
+
+  /*! Write multiple values starting from the specified position
+   * given an initializer list.
+   * If you want, this implementation allows you to specify the
+   * type you want to cast the values to
+   * \param beg The beginning interator
+   * \param end The ending interator
+   * \param p The position where you want to write
+   */
   template <typename K = Bin::TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
     wjump_to(p);
     write_many<K>(v);
   }
 
+
+  /*! Write multiple values starting from the specified position
+   * given two iterators.
+   * \param beg The beginning interator
+   * \param end The ending interator
+   * \param p The position where you want to write
+   */
   template <typename T> void write_many(T beg, T end, size_type p) {
     wjump_to(p);
     write_many(beg, end);
   }
 
+
+  /*! Write multiple values starting from the specified position
+   * given two iterators.
+   * If you want, this implementation allows you to specify the
+   * type you want to cast the values to
+   * \param beg The beginning interator
+   * \param end The ending interator
+   * \param p The position where you want to write
+   */
   template <typename K, typename T> void write_many(T beg, T end, size_type p) {
     wjump_to(p);
     write_many<K>(beg, end);
   }
 
+
+  /*! Write multiple values starting from the current position
+   * given a container.
+   * \param v The container
+   * \param p The position where you want to write
+   */
   template <typename T>
   void write_many(const T &v, size_type p) {
     wjump_to(p);
@@ -186,6 +304,14 @@ class Bin {
       write(*it);
   }
 
+
+  /*! Write multiple values starting from the current position
+   * given a container.
+   * If you want, this implementation allows you to specify the
+   * type you want to cast the values to
+   * \param v The container
+   * \param p The position where you want to write
+   */
   template <typename K, typename T>
   void write_many(const T &v, size_type p) {
     wjump_to(p);
@@ -193,17 +319,31 @@ class Bin {
       write<K>(*it);
   }
 
+  /*! Assign operator.
+   * It is used to write a in the file the value assigned
+   */
   template <typename T> void operator=(T v) { write(v); }
+
+  /*! Casting operator
+   * It is used to read from the file a value casted from
+   * a certain type.
+   */
   template <typename T> operator T() { return get_value<T>(); }
 
+  /*! Write a string in the current position
+   * \param v The string you want to write
+   */
   void write_string(const std::string &v) {
-    // Write a string to the current location
     if (closed)
       throw std::domain_error("Can't write string on closed file!");
-    fs.write(v.data(), sizeof(char) * v.size());
+    fs.write(v.data(), bytes<char>(v.size()));
   }
+
+  /*! Write a string in the specified position
+   * \param v The string you want to write
+   * \param p The position where you want to write
+   */
   void write_string(const std::string &v, size_type p) {
-    // Write a string to the specified location
     wjump_to(p);
     write_string(v);
   }
@@ -212,8 +352,8 @@ class Bin {
    * READING *
    ***********/
   
+  /*! Read a single value of type T from the current position */
   template <typename T = unsigned char> T get_value() {
-    // Get a value from the current location of the specified type
     if (closed)
       throw std::domain_error("Can't read from closed file!");
     if (static_cast<decltype(sizeof(T))>(size() - rpos()) < sizeof(T))
@@ -221,45 +361,54 @@ class Bin {
     char buf[sizeof(T)];
     fs.read(buf, sizeof(T));
     // For float types, the behaviour of little and big endian is the same
-    if (!little_endian && !std::is_floating_point<T>::value)
+    if (opposite_endian && !std::is_floating_point<T>::value)
       std::reverse(&buf[0], &buf[sizeof(T)]);
     T *d = reinterpret_cast<T*>(buf);
     return *d;
   }
 
+  /*! Read multiple values of type T from the current position
+   * \param n The number of elements of type T you want to read
+   */
   template <typename T = unsigned char> std::vector<T> get_values(size_type n) {
-    // Get multiple values from the current location
     if (closed)
       throw std::domain_error("Can't write on closed file!");
-    if (static_cast<decltype(sizeof(T))>(size() - rpos()) < sizeof(T) * n)
+    if (static_cast<decltype(sizeof(T))>(size() - rpos()) < bytes<T>(n))
       throw std::runtime_error("Trying to read past EOF!");
-    char *buf = new char[sizeof(T) * n];
-    fs.read(buf, sizeof(T) * n);
+    char *buf = new char[bytes<T>(n)];
+    fs.read(buf, bytes<T>(n));
     std::vector<T> ret(n);
 
-    if (!little_endian && !std::is_floating_point<T>::value) {
+    if (opposite_endian && !std::is_floating_point<T>::value) {
       for (int i = 0; i != n; ++i)
-        std::reverse(&buf[i * sizeof(T)], &buf[(i + 1) * sizeof(T)]);
+        std::reverse(&buf[bytes<T>(i)], &buf[bytes<T>(i + 1)]);
     }
     for (int i = 0; i != n; ++i)
-      ret[i] = *reinterpret_cast<T*>(buf + (i * sizeof(T)));
+      ret[i] = *reinterpret_cast<T*>(buf + bytes<T>(i));
     return ret;
   }
 
+
+  /*! Read a single value of type T from the specified position
+   * \param p The position from where you want to read
+   */
   template <typename T = unsigned char> T get_value(size_type p) {
-    // Get a value from the specified location
     rjump_to(p);
     return get_value<T>();
   }
 
+  /*! Read multiple values of type T from the specified position
+   * \param n The number of elements of type T you want to read
+   * \param p The position from where you want to read
+   */
   template <typename T = unsigned char> std::vector<T> get_values(size_type n, size_type p) {
     // Get multiple values from the specified location
     rjump_to(p);
     return get_values<T>(n);
   }
 
+  /*! Read a string from the current location */
   std::string get_string(std::string::size_type len) {
-    // Read a string from the current location
     if (closed)
       throw std::domain_error("Can't read string from closed file!");
     if (len > static_cast<std::string::size_type>(size() - fs.tellg()))
@@ -273,42 +422,59 @@ class Bin {
     return ret;
   }
 
+  /*! Read a string from the specified location
+   * \param p The position from where you want to read
+   */
   std::string get_string(std::string::size_type len, size_type p) {
-    // Read a string from the specified location
     rjump_to(p);
     return get_string(len);
   }
 
+  /*! Flush the buffer */
   void flush() { fs.flush(); }
 
+  /*! Close the file */
   void close() {
     fs.close();
     closed = true;
   }
 
+  /*! Get the filename */
   std::string get_filename() const { return filename; }
 
-  template <typename T> BinPtr<T> begin();
-  template <typename T> BinPtr<T> end();
+
+  template <typename T> BinPtr<T> begin();  /*!< Returns the begin iterator */
+  template <typename T> BinPtr<T> end();  /*!< Returns the end iterator */
 
  private:
-  std::fstream fs;
-  const std::string filename;
-  bool little_endian;
-  bool closed = false;
-  std::shared_ptr<Bin> sptr;
-  
-  // The following two functions handle the case when the user passes
-  // an initializer_list to write_many. The first one is called when
-  // he doesn't specify a casting type, the second one is called when
-  // he does. Check the function
-  // template <typename K = Bin::TypeNotSpecified, typename T> write_many(const std::initializer_list<T> &il)
-  // to see how they are called
+  std::fstream fs;  /*!< The file stream */
+  const std::string filename;  /*!< The filename */
+  bool closed = false;  /*!< Tells if the file has been closed */
+  std::shared_ptr<Bin> sptr;  /*!< A shared pointer which will point
+                               * to the instance of the class itself
+                               */
+  bool opposite_endian;  /*!< Tells if the endianness you want to read/write
+                          * is the opposite of the default one of the
+			  * machine
+			  */
+
+
+  /*!
+   * This function is used to handle the case when the user wants to
+   * write multiple values by passing an initializer_list and doesn't
+   * specify a casting type
+   */
   template <typename K, typename T>
   void is_initializer_list_cast_specified(std::true_type, const std::initializer_list<T>& il) {
     write_many(std::begin(il), std::end(il));
   }
-  
+
+
+  /*!
+   * This function is used to handle the case when the user wants to
+   * write multiple values by passing an initializer_list and
+   * specifies a casting type
+   */
   template <typename K, typename T>
   void is_initializer_list_cast_specified(std::false_type, const std::initializer_list<T>& il) {
     write_many<K>(std::begin(il), std::end(il));
@@ -326,32 +492,45 @@ ITS USE IS RECOMMENDED FOR ELECANGE PURPOSE ONLY
 +++++++++++++++++++++++++++++++++++++++++++++++ */
 
 
-// The purpose if the following class is to
-// treat differentiated BinPtr as they were
-// reference to lvalue, which they clearly
-// aren't
-
+/*! An intermediate class used by the pointer class.
+ * The purpose if the following class is to
+ * treat differentiated BinPtr as they were
+ * reference to lvalue, which they clearly
+ * aren't
+ */
 template <typename T>
 class TypeBin {
   template <typename K> friend void swap(TypeBin<K> &a, TypeBin<K> &b);
   template <typename K> friend class BinPtr;
 
  public:
+  /*! The constructor
+   * \param b The reference to the Bin instance
+   * \param i The position of the file where to point
+   */
   explicit TypeBin(Bin &b, std::streamsize i) : tmp_b(b), curr(i) { }
   
-  // Getting a value from a differentiated pointed
+  /*! Getting a value from a differentiated pointer
+   */
   operator T() & { return tmp_b.get_value<T>(curr); }
   
-  // Setting a value to a differentiated pointer
+  /*! Setting a value to a differentiated pointer
+   */
   void operator=(T a) & { tmp_b.template write<T>(a, curr); }
 
  private:
-  Bin &tmp_b;
-  std::streamsize curr;
+  Bin &tmp_b;  //!< The Bin instance which the iterator belongs to
+  std::streamsize curr;  //!< The current position of the iterator
 
+  /*!< Set the current position of the class in the file
+   * \param i The position
+   */
   void set_curr(std::streamsize i) { curr = i; }
 };
 
+/*! Swaps two "intermediate" iterators
+ * \param a,b The "intermediate" iterators to be swapped
+ */
 template <typename T>
 inline void swap(TypeBin<T> &a, TypeBin<T> &b) {
   T tmp = a.tmp_b.template get_value<T>(a.curr);
@@ -359,7 +538,15 @@ inline void swap(TypeBin<T> &a, TypeBin<T> &b) {
   b.tmp_b.template write<T>(tmp, b.curr);
 }
 
-// The actual pointer class
+/*! The actual pointer class
+ *
+ * +++++++++++++++ WARNING +++++++++++++++++
+ * THE IMPLEMENTED ITERATOR IS EXTREMELY SLOWER.
+ * IT IS STRONGLY DISCOURAGED ITS USE TO DEAL WITH
+ * BIG FILES OR TO COMPUTE MANY OPERATIONS.
+ * ITS USE IS RECOMMENDED FOR ELECANGE PURPOSE ONLY
+ * +++++++++++++++++++++++++++++++++++++++++++++++
+ */
 template <typename T>
 class BinPtr {
   template <typename K> friend typename std::iterator_traits<BinPtr<K>>::difference_type operator-(const BinPtr<K> &a, const BinPtr<K> &b);
@@ -369,9 +556,18 @@ class BinPtr {
   using size_type = Bin::size_type;
   using value_type = T;
 
+  /*! Default constructor */
   BinPtr() : curr(0) { }
+
+  /*! The main constructor
+   * \param a The shared pointer to the Bin instance
+   * \param sz The position where to point
+   */
   explicit BinPtr(std::shared_ptr<Bin> &a, size_type sz = 0) : wptr(a), curr(sz), tb(*a, curr) { }
 
+  /* The dereference operator
+   * \return It returns the "intermediate" iterator which can be treated as an lvalue reference
+   */
   TypeBin<T> &operator*() {
     auto p = check(0, "");
     p->wjump_to(curr);
@@ -381,12 +577,15 @@ class BinPtr {
 
 
   // Increment and decrement operators
+
+  /*! Increment operator */
   BinPtr &operator++() {
     check(0, "");  // This step decreases the speed by about 30%. Unfortunately it's needed
     curr += sizeof(T);
     return *this;
   }
 
+  /*! Decrement operator */
   BinPtr &operator--() {
     if (curr < static_cast<long int>(sizeof(T)))
       throw std::out_of_range("decrement past begin of Bin");
@@ -394,29 +593,35 @@ class BinPtr {
     return *this;
   }
 
+  /*! Increment operator */
   BinPtr operator++(int) {
     BinPtr ret = *this;
     ++*this;
     return ret;
   }
 
+  /*! Decrement operator */
   BinPtr operator--(int) {
     BinPtr ret = *this;
     --*this;
     return ret;
   }
 
+  /*! Random access iterator bahaviour */
   BinPtr operator+(size_type n) const {
     auto b = check(0, "");
-    return BinPtr(b, curr + sizeof(T) * n);
+    return BinPtr(b, curr + Bin::bytes<T>(n));
   }
 
+  /*! Random access iterator bahaviour */
   BinPtr operator-(size_type n) const {
     auto b = check(0, "");
-    return BinPtr(b, curr - sizeof(T) * n);
+    return BinPtr(b, curr - Bin::bytes<T>(n));
   }
 
   // Relational operators
+
+  /*! Equality operator */
   bool operator==(const BinPtr &wrb2) const {
     auto b1 = wptr.lock();
     auto b2 = wrb2.wptr.lock();
@@ -426,6 +631,7 @@ class BinPtr {
                    std::addressof(b1->fs) == std::addressof(b2->fs);
   }
 
+  /*! Inequality operator */
   bool operator!=(const BinPtr &wrb2) const { return !(*this == wrb2); }
 
   // Since this class handles built-in types, I
@@ -433,12 +639,14 @@ class BinPtr {
   BinPtr operator->() const = delete;
 
  private:
-  std::weak_ptr<Bin> wptr;
-  size_type curr;
-  TypeBin<T> tb;
+  std::weak_ptr<Bin> wptr;  //!< A weak_ptr to the Bin instance
+  size_type curr;  //!< The current poisition of the iterator
+  TypeBin<T> tb;  //!< The "intermediate" iterator being handled
 
+  /*! Performs various check given a position in the file.
+   * It is used before yielding a pointer
+   */
   std::shared_ptr<Bin> check(size_type i, const std::string &msg) const {
-    // Various checks
     auto ret = wptr.lock();
     if (!ret)
       throw std::runtime_error("Unbound Bin");
@@ -457,6 +665,7 @@ BinPtr<T> Bin::begin() { return BinPtr<T>(sptr); }
 template <typename T>
 BinPtr<T> Bin::end() { return BinPtr<T>(sptr, size()); }
 
+/*! Relational operator between two iterators */
 template <typename T>
 bool operator<(const BinPtr<T> &ptr1, const BinPtr<T> &ptr2) {
   return ptr1.curr < ptr2.curr;
