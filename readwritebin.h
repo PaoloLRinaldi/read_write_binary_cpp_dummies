@@ -627,7 +627,7 @@ ITS USE IS RECOMMENDED FOR ELECANGE PURPOSE ONLY
 +++++++++++++++++++++++++++++++++++++++++++++++ */
 
 
-/*! \brief A class handled by PtrBin
+/*! \brief An "intermediate" class handled by PtrBin
  *
  * An intermediate class used by the pointer class PtrBin.
  * The purpose if the following class is to
