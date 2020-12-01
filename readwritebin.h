@@ -43,8 +43,7 @@ class Bin {
   // The destructor of the shared_ptr simply puts the pointer
   // to 0 in order to avoid infinite loop of destructors
   // (it would end up destroying itself more than once).
-  /*! The constructor
-   *
+  /*! The constructor.\n 
    * The destructor of the shared_ptr simply puts the pointer
    * to 0 in order to avoid infinite loop of destructors
    * (it would end up destroying itself more than once).
@@ -82,6 +81,9 @@ class Bin {
 
   /*! Tells if the machine is little endian (true)
    * or big endian (false)
+   * \return It returns a bool:\n 
+   * \reutnr true:  The machine uses little endian\n 
+   * \return false: The machine uses big endian
    */
   static bool is_default_little_endian() {
     short int n = 1;
@@ -91,12 +93,12 @@ class Bin {
     throw std::domain_error("Can't detect endianness of the machine!");
   }
 
-  /*! Returns the number of bytes occupied by n_steps instances of T
-   * \tparam T The type T
-   * \param n_steps The number of instances of an object of type T
+  /*! Returns the number of bytes occupied by n_instances instances of T
+   * \tparam T The type used to determine the size of an instance of type T
+   * \param n_instances The number of instances of an object of type T
    */
-  template <typename T> static constexpr size_type bytes(size_type n_steps) {
-    return sizeof(T) * n_steps;
+  template <typename T> static constexpr size_type bytes(size_type n_instances) {
+    return sizeof(T) * n_instances;
   }
 
   /*! Jump to a location in the file to read
@@ -126,7 +128,9 @@ class Bin {
 
   // Getters
 
-  /*! Get the size of the file */
+  /*! Get the size of the file
+   * \return It returns the size of the file handled.
+   */
   size_type size() {
     if (closed)
       throw std::domain_error("Can't tell size of closed file!");
@@ -138,48 +142,62 @@ class Bin {
   }
   
   /*! Get the position you ar currently on (write) */
+  /*! \param It returns the current position for writing. */
   size_type wpos() { return fs.tellp(); }
 
   /*! Get the position you ar currently on (read) */
   /*! It seems to be identical to the write version */
+  /*! \param It returns the current position for reading. */
   size_type rpos() { return fs.tellg(); }
 
   /*! Move by a certain number of steps, forward or backward.
    * The size of the step is deduced by the type specified
-   * \param n The number of steps
+   * \tparam T The type used to determine the size of a step
+   * \param n_steps The number of steps
    */
   template <typename T = char>
-  void wmove_by(std::streamoff n) { fs.seekp(bytes<T>(n), std::ios::cur); }
+  void wmove_by(std::streamoff n_steps) { fs.seekp(bytes<T>(n_steps), std::ios::cur); }
 
   /*! Move by a certain number of steps, forward or backward.
    * The size of the step is deduced by the type specified
-   * \param n The number of steps
+   * \tparam T The type used to determine the size of a step
+   * \param n_steps The number of steps
    */
   template <typename T = char>
-  void rmove_by(std::streamoff n) { fs.seekg(bytes<T>(n), std::ios::cur); }
+  void rmove_by(std::streamoff n_steps) { fs.seekg(bytes<T>(n_steps), std::ios::cur); }
 
   /***********
    * WRITING *
    ***********/
 
   /*! Write a value in the current position
-   * \param v The value you want to write
+   * \tparam T
+   * \parblock
+   * The type of the input value. It is deduced from the
+   * value assigned
+   * \endparblock
+   * \param val The value you want to write
    */
-  template <typename T> void write(T v) {
+  template <typename T> void write(T val) {
     if (closed)
       throw std::domain_error("Can't write on closed file!");
-    char *buf = reinterpret_cast<char*>(&v);
+    char *buf = reinterpret_cast<char*>(&val);
     if (opposite_endian) std::reverse(buf, buf + sizeof(T));
     fs.write(buf, sizeof(T));
   }
 
   /*! Write multiple values starting from the current position
    * given two iterators.
-   * \param beg The beginning interator
-   * \param end The ending interator
+   * \tparam T
+   * \parblock
+   * The type of the input iterators. It is deduced from the
+   * iterators assigned.
+   * \endparblock
+   * \param begit The beginning interator
+   * \param endit The ending interator
    */
-  template <typename T> void write_many(T beg, T end) {
-    for (auto it = beg; it != end; ++it)
+  template <typename T> void write_many(T begit, T endit) {
+    for (auto it = begit; it != endit; ++it)
       write(*it);
   }
 
@@ -187,11 +205,17 @@ class Bin {
    * given two iterators.
    * If you want, this implementation allows you to specify the
    * type you want to cast the values to
-   * \param beg The beginning interator
-   * \param end The ending interator
+   * \tparam K The type used to interpret bytes of the output values
+   * \tparam T
+   * \parblock
+   * The type of the input iterators. It is deduced from the
+   * iterators assigned
+   * \endparblock
+   * \param begit The beginning interator
+   * \param endit The ending interator
    */
-  template <typename K, typename T> void write_many(T beg, T end) {
-    for (auto it = beg; it != end; ++it)
+  template <typename K, typename T> void write_many(T begit, T endit) {
+    for (auto it = begit; it != endit; ++it)
       write<K>(*it);
   }
 
@@ -199,6 +223,16 @@ class Bin {
    * given an initializer list.
    * If you want, this implementation allows you to specify the
    * type you want to cast the values to
+   * \tparam K
+   * \parblock
+   * The type used to interpret bytes of the output values. If
+   * omitted it is used T by default
+   * \endparblock
+   * \tparam T
+   * \parblock
+   * The type of the input values. It is deduced from the
+   * values assigned
+   * \endparblock
    * \param il The initializer list
    */
   template <typename K = Bin::TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &il) {
@@ -215,11 +249,17 @@ class Bin {
 
   /*! Write multiple values starting from the current position
    * given a container.
-   * \param v The container
+   * \tparam T
+   * \parblock
+   * The type of the container. It is deduced from the
+   * container assigned. The type handled by the contained is
+   * used to interpret bytes of the output values
+   * \endparblock
+   * \param vals The container
    */
   template <typename T>
-  void write_many(const T &v) {
-    for (auto it = std::begin(v); it != std::end(v); ++it)
+  void write_many(const T &vals) {
+    for (auto it = std::begin(vals); it != std::end(vals); ++it)
       write(*it);
   }
 
@@ -228,11 +268,17 @@ class Bin {
    * given a container.
    * If you want, this implementation allows you to specify the
    * type you want to cast the values to
-   * \param v The container
+   * \tparam K The type used to interpret bytes of the output values
+   * \tparam T
+   * \parblock
+   * The type of the container. It is deduced from the
+   * container assigned
+   * \endparblock
+   * \param vals The container
    */
   template <typename K, typename T>
-  void write_many(const T &v) {
-    for (auto it = std::begin(v); it != std::end(v); ++it)
+  void write_many(const T &vals) {
+    for (auto it = std::begin(vals); it != std::end(vals); ++it)
       write<K>(*it);
   }
 
@@ -243,10 +289,15 @@ class Bin {
  
 
   /*! Write a value in the specified position
-   * \param v The value you want to write
+   * \tparam T
+   * \parblock
+   * The type of the input value. It is deduced from the
+   * value assigned
+   * \endparblock
+   * \param val The value you want to write
    * \param p The position where you want to write
    */
-  template <typename T> void write(T v, size_type p) {
+  template <typename T> void write(T val, size_type p) {
     wjump_to(p);
     write(v);
   }
@@ -256,25 +307,39 @@ class Bin {
    * given an initializer list.
    * If you want, this implementation allows you to specify the
    * type you want to cast the values to
-   * \param beg The beginning interator
-   * \param end The ending interator
+   * \tparam K
+   * \parblock
+   * The type used to interpret bytes of the output values. If
+   * omitted it is used T by default
+   * \endparblock
+   * \tparam T
+   * \parblock
+   * The type of the input values. It is deduced from the
+   * values assigned
+   * \endparblock
+   * \param il The initializer list
    * \param p The position where you want to write
    */
-  template <typename K = Bin::TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &v, size_type p) {
+  template <typename K = Bin::TypeNotSpecified, typename T> void write_many(const std::initializer_list<T> &il, size_type p) {
     wjump_to(p);
-    write_many<K>(v);
+    write_many<K>(il);
   }
 
 
   /*! Write multiple values starting from the specified position
    * given two iterators.
-   * \param beg The beginning interator
-   * \param end The ending interator
+   * \tparam T
+   * \parblock
+   * The type of the input iterators. It is deduced from the
+   * iterators assigned.
+   * \endparblock
+   * \param begit The beginning interator
+   * \param endit The ending interator
    * \param p The position where you want to write
    */
-  template <typename T> void write_many(T beg, T end, size_type p) {
+  template <typename T> void write_many(T begit, T endit, size_type p) {
     wjump_to(p);
-    write_many(beg, end);
+    write_many(begit, endit);
   }
 
 
@@ -282,25 +347,37 @@ class Bin {
    * given two iterators.
    * If you want, this implementation allows you to specify the
    * type you want to cast the values to
-   * \param beg The beginning interator
-   * \param end The ending interator
+   * \tparam K The type used to interpret bytes of the output values
+   * \tparam T
+   * \parblock
+   * The type of the input iterators. It is deduced from the
+   * iterators assigned
+   * \endparblock
+   * \param begit The beginning interator
+   * \param endit The ending interator
    * \param p The position where you want to write
    */
-  template <typename K, typename T> void write_many(T beg, T end, size_type p) {
+  template <typename K, typename T> void write_many(T begit, T endit, size_type p) {
     wjump_to(p);
-    write_many<K>(beg, end);
+    write_many<K>(begit, endit);
   }
 
 
   /*! Write multiple values starting from the current position
    * given a container.
-   * \param v The container
+   * \tparam T
+   * \parblock
+   * The type of the container. It is deduced from the
+   * container assigned. The type handled by the contained is
+   * used to interpret bytes of the output values
+   * \endparblock
+   * \param vals The container
    * \param p The position where you want to write
    */
   template <typename T>
-  void write_many(const T &v, size_type p) {
+  void write_many(const T &vals, size_type p) {
     wjump_to(p);
-    for (auto it = std::begin(v); it != std::end(v); ++it)
+    for (auto it = std::begin(vals); it != std::end(vals); ++it)
       write(*it);
   }
 
@@ -309,50 +386,66 @@ class Bin {
    * given a container.
    * If you want, this implementation allows you to specify the
    * type you want to cast the values to
-   * \param v The container
+   * \tparam K The type used to interpret bytes of the output values
+   * \tparam T
+   * \parblock
+   * The type of the container. It is deduced from the
+   * container assigned
+   * \endparblock
+   * \param vals The container
    * \param p The position where you want to write
    */
   template <typename K, typename T>
-  void write_many(const T &v, size_type p) {
+  void write_many(const T &vals, size_type p) {
     wjump_to(p);
-    for (auto it = std::begin(v); it != std::end(v); ++it)
+    for (auto it = std::begin(vals); it != std::end(vals); ++it)
       write<K>(*it);
   }
 
   /*! Assign operator.
    * It is used to write a in the file the value assigned
+   * \tparam T
+   * \parblock
+   * The type used to interpret bytes. It is deduced from
+   * the value assigned
+   * \endparblock
+   * \param val The value to write
    */
-  template <typename T> void operator=(T v) { write(v); }
+  template <typename T> void operator=(T val) { write(val); }
 
   /*! Casting operator
    * It is used to read from the file a value casted from
    * a certain type.
+   * \tparam T The type used to interpret bytes
    */
   template <typename T> operator T() { return get_value<T>(); }
 
   /*! Write a string in the current position
-   * \param v The string you want to write
+   * \param s The string you want to write
    */
-  void write_string(const std::string &v) {
+  void write_string(const std::string &s) {
     if (closed)
       throw std::domain_error("Can't write string on closed file!");
-    fs.write(v.data(), bytes<char>(v.size()));
+    fs.write(s.data(), bytes<char>(s.size()));
   }
 
   /*! Write a string in the specified position
-   * \param v The string you want to write
+   * \param s The string you want to write
    * \param p The position where you want to write
    */
-  void write_string(const std::string &v, size_type p) {
+  void write_string(const std::string &s, size_type p) {
     wjump_to(p);
-    write_string(v);
+    write_string(s);
   }
 
   /***********
    * READING *
    ***********/
   
-  /*! Read a single value of type T from the current position */
+  /*! Read a single value of type T from the current position 
+   * \tparam T The type used to interpret bytes
+   * \return It returns the value read of type T
+   */
   template <typename T = unsigned char> T get_value() {
     if (closed)
       throw std::domain_error("Can't read from closed file!");
@@ -368,7 +461,9 @@ class Bin {
   }
 
   /*! Read multiple values of type T from the current position
+   * \tparam T The type used to interpret bytes
    * \param n The number of elements of type T you want to read
+   * \return It returns the values in a std::vector<T>
    */
   template <typename T = unsigned char> std::vector<T> get_values(size_type n) {
     if (closed)
@@ -390,7 +485,9 @@ class Bin {
 
 
   /*! Read a single value of type T from the specified position
+   * \tparam T The type used to interpret bytes
    * \param p The position from where you want to read
+   * \return It returns the value read of type T
    */
   template <typename T = unsigned char> T get_value(size_type p) {
     rjump_to(p);
@@ -398,16 +495,20 @@ class Bin {
   }
 
   /*! Read multiple values of type T from the specified position
+   * \tparam T The type used to interpret bytes
    * \param n The number of elements of type T you want to read
    * \param p The position from where you want to read
+   * \return It returns the values in a std::vector<T>
    */
   template <typename T = unsigned char> std::vector<T> get_values(size_type n, size_type p) {
-    // Get multiple values from the specified location
     rjump_to(p);
     return get_values<T>(n);
   }
 
-  /*! Read a string from the current location */
+  /*! Read a string from the current location
+   * \param len The length of the string to read
+   * \return It returns the string read
+   */
   std::string get_string(std::string::size_type len) {
     if (closed)
       throw std::domain_error("Can't read string from closed file!");
@@ -423,7 +524,9 @@ class Bin {
   }
 
   /*! Read a string from the specified location
+   * \param len The length of the string to read
    * \param p The position from where you want to read
+   * \return It returns the string read
    */
   std::string get_string(std::string::size_type len, size_type p) {
     rjump_to(p);
@@ -439,16 +542,18 @@ class Bin {
     closed = true;
   }
 
-  /*! Get the filename */
+  /*! Get the filename
+   * \return It returns the file name
+   */
   std::string get_filename() const { return filename; }
 
 
-  template <typename T> BinPtr<T> begin();  /*!< Returns the begin iterator */
-  template <typename T> BinPtr<T> end();  /*!< Returns the end iterator */
+  template <typename T> BinPtr<T> begin();
+  template <typename T> BinPtr<T> end();
 
  private:
   std::fstream fs;  /*!< The file stream */
-  const std::string filename;  /*!< The filename */
+  const std::string filename;  /*!< The file name */
   bool closed = false;  /*!< Tells if the file has been closed */
   std::shared_ptr<Bin> sptr;  /*!< A shared pointer which will point
                                * to the instance of the class itself
@@ -492,11 +597,12 @@ ITS USE IS RECOMMENDED FOR ELECANGE PURPOSE ONLY
 +++++++++++++++++++++++++++++++++++++++++++++++ */
 
 
-/*! An intermediate class used by the pointer class.
+/*! An intermediate class used by the pointer class PtrBin.
  * The purpose if the following class is to
  * treat differentiated BinPtr as they were
  * reference to lvalue, which they clearly
  * aren't
+ * \tparam T The type handled by the pointer
  */
 template <typename T>
 class TypeBin {
@@ -515,6 +621,7 @@ class TypeBin {
   operator T() & { return tmp_b.get_value<T>(curr); }
   
   /*! Setting a value to a differentiated pointer
+   * \param a The value assigned to the differentiated pointer
    */
   void operator=(T a) & { tmp_b.template write<T>(a, curr); }
 
@@ -529,6 +636,7 @@ class TypeBin {
 };
 
 /*! Swaps two "intermediate" iterators
+ * \tparam T The type handled by the "intermediate" iterators to be swapped
  * \param a,b The "intermediate" iterators to be swapped
  */
 template <typename T>
@@ -546,6 +654,8 @@ inline void swap(TypeBin<T> &a, TypeBin<T> &b) {
  * BIG FILES OR TO COMPUTE MANY OPERATIONS.
  * ITS USE IS RECOMMENDED FOR ELECANGE PURPOSE ONLY
  * +++++++++++++++++++++++++++++++++++++++++++++++
+ *
+ * \tparam T The type handled by the pointer
  */
 template <typename T>
 class BinPtr {
@@ -566,7 +676,8 @@ class BinPtr {
   explicit BinPtr(std::shared_ptr<Bin> &a, size_type sz = 0) : wptr(a), curr(sz), tb(*a, curr) { }
 
   /* The dereference operator
-   * \return It returns the "intermediate" iterator which can be treated as an lvalue reference
+   * \return It returns the "intermediate" iterator which can be treated as an lvalue
+   * \return reference, both for reading and writing
    */
   TypeBin<T> &operator*() {
     auto p = check(0, "");
@@ -578,14 +689,18 @@ class BinPtr {
 
   // Increment and decrement operators
 
-  /*! Increment operator */
+  /*! Increment operator
+   * \return It returns the increased iterator
+   */
   BinPtr &operator++() {
     check(0, "");  // This step decreases the speed by about 30%. Unfortunately it's needed
     curr += sizeof(T);
     return *this;
   }
 
-  /*! Decrement operator */
+  /*! Decrement operator
+   * \return It returns the decreased iterator
+   */
   BinPtr &operator--() {
     if (curr < static_cast<long int>(sizeof(T)))
       throw std::out_of_range("decrement past begin of Bin");
@@ -593,27 +708,37 @@ class BinPtr {
     return *this;
   }
 
-  /*! Increment operator */
+  /*! Increment operator
+   * \return It returns the iterator before being increased
+   */
   BinPtr operator++(int) {
     BinPtr ret = *this;
     ++*this;
     return ret;
   }
 
-  /*! Decrement operator */
+  /*! Decrement operator
+   * \return It returns the iterator before being decreased
+   */
   BinPtr operator--(int) {
     BinPtr ret = *this;
     --*this;
     return ret;
   }
 
-  /*! Random access iterator bahaviour */
+  /*! Random access iterator bahaviour
+   * \param n The number of forward steps of the iterator
+   * \return It returns the increased iterator
+   */
   BinPtr operator+(size_type n) const {
     auto b = check(0, "");
     return BinPtr(b, curr + Bin::bytes<T>(n));
   }
 
-  /*! Random access iterator bahaviour */
+  /*! Random access iterator bahaviour
+   * \param n The number of backward steps of the iterator
+   * \return It returns the decreased iterator
+   */
   BinPtr operator-(size_type n) const {
     auto b = check(0, "");
     return BinPtr(b, curr - Bin::bytes<T>(n));
@@ -621,7 +746,9 @@ class BinPtr {
 
   // Relational operators
 
-  /*! Equality operator */
+  /*! Equality operator
+   * \param wrb2 The pointer on the right side of the operator
+   */
   bool operator==(const BinPtr &wrb2) const {
     auto b1 = wptr.lock();
     auto b2 = wrb2.wptr.lock();
@@ -631,11 +758,15 @@ class BinPtr {
                    std::addressof(b1->fs) == std::addressof(b2->fs);
   }
 
-  /*! Inequality operator */
+  /*! Inequality operator
+   * \param wrb2 The pointer on the right side of the operator
+   */
   bool operator!=(const BinPtr &wrb2) const { return !(*this == wrb2); }
 
-  // Since this class handles built-in types, I
-  // don't want to allow the -> operator.
+
+  /*! Since this class handles built-in types, I
+   * don't want to allow the -> operator.
+   */
   BinPtr operator->() const = delete;
 
  private:
@@ -645,6 +776,8 @@ class BinPtr {
 
   /*! Performs various check given a position in the file.
    * It is used before yielding a pointer
+   * \param i The point of the file to check
+   * \param msg The error message to throw if the point is out of bounds.
    */
   std::shared_ptr<Bin> check(size_type i, const std::string &msg) const {
     auto ret = wptr.lock();
@@ -658,34 +791,51 @@ class BinPtr {
   }
 };
 
-
+/*! \tparam T The type that will be handled by the iterator
+ * \return It returns the begin iterator
+ */
 template <typename T>
 BinPtr<T> Bin::begin() { return BinPtr<T>(sptr); }
 
+
+/*! \tparam T The type that will be handled by the iterator
+ * \return It returns the end iterator
+ */
 template <typename T>
 BinPtr<T> Bin::end() { return BinPtr<T>(sptr, size()); }
 
-/*! Relational operator between two iterators */
+/*! Relational operator between two iterators
+ * \param ptr1,ptr2 The pointers to be compared
+ */
 template <typename T>
 bool operator<(const BinPtr<T> &ptr1, const BinPtr<T> &ptr2) {
   return ptr1.curr < ptr2.curr;
 }
 
+/*! Difference between two iterators
+ * \param a The left-hand side iterator
+ * \param b The right-hand side iterator
+ * \return It returns the distance between the two iterators
+ */
 template <typename T>
 typename std::iterator_traits<BinPtr<T>>::difference_type operator-(const BinPtr<T> &a, const BinPtr<T> &b) {
   return (a.curr - b.curr) / sizeof(T);
 }
 
-// This "iterator_traits" part has been written with the only
-// goal to make the code work, being aware that this could further affect
-// negatively its already lacking cleanliness
+
 namespace std {
+    /*! This "iterator_traits" part has been written with the only
+     * goal to make the code work, being aware that this could further affect
+     * negatively its already lacking cleanliness. For example it allows to
+     * use BinPtr for functions of <algorithm>
+     * \tparam T The type handled by the pointer
+     */
     template <typename T>
     struct iterator_traits<BinPtr<T>> {
       typedef ptrdiff_t difference_type;
       typedef TypeBin<T>&& value_type;
-      typedef TypeBin<T>&& reference;  // In general it whould be T&
-      typedef BinPtr<T> pointer;  // In general it should be T*
+      typedef TypeBin<T>&& reference;  //!< In general it whould be T&
+      typedef BinPtr<T> pointer;  //!< In general it should be T*
       typedef std::random_access_iterator_tag iterator_category;
     };
 }
