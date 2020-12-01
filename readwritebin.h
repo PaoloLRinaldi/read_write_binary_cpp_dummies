@@ -58,7 +58,7 @@ class Bin {
    */
   explicit Bin(const std::string &fname, bool truncate = false, bool use_little_endian = Bin::is_default_little_endian()) :
       filename(fname), sptr(this, [] (Bin *p) { return p = 0; }) {
-    opposite_endian = use_little_indian != Bin::is_default_little_endian();
+    opposite_endian = use_little_endian != Bin::is_default_little_endian();
     struct stat buffer;
     bool already_exists = stat(filename.c_str(), &buffer) == 0;
     if (truncate || !already_exists)
