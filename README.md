@@ -55,5 +55,31 @@ The first time the numbers are: 2 5 9
 The second time the numbers are: 0 9 5 2 
 ```
 
+# Documentation
+If not installed, install Doxygen:
+```
+sudo apt-get install doxygen
+```
+Clone the repo:
+```
+git clone https://github.com/PaoloLRinaldi/read_write_binary_cpp_dummies.git
+```
+Go inside the directory:
+```
+cd read_write_binary_cpp_dummies
+```
+Generate the documentation:
+```
+doxygen doxyconfig.txt
+```
+To open the documentation, if you have firefox write:
+```
+firefox html/index.html
+```
+If you have Chrome wirte:
+```
+google-chrome html/index.html
+```
+
 # Requirements
 C++11
