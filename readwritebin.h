@@ -23,6 +23,8 @@
 template <typename T> class BinPtr;
 template <typename T> class TypeBin;
 
+/*! \brief It handles a binary file for read/write operations
+ */
 class Bin {
   template <typename T> friend class BinPtr;
   template <typename T> friend class TypePtr;
