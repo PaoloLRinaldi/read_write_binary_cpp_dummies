@@ -265,7 +265,7 @@ class Bin {
    * \tparam T
    * \parblock
    * The type of the container. It is deduced from the
-   * container assigned. The type handled by the contained is
+   * container assigned. The type handled by the container is
    * used to interpret bytes of the output values
    * \endparblock
    * \param vals The container
@@ -387,7 +387,7 @@ class Bin {
    * \tparam T
    * \parblock
    * The type of the container. It is deduced from the
-   * container assigned. The type handled by the contained is
+   * container assigned. The type handled by the container is
    * used to interpret bytes of the output values
    * \endparblock
    * \param vals The container
