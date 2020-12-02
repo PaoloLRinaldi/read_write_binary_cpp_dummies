@@ -381,7 +381,7 @@ class Bin {
   }
 
 
-  /*! \brief Write multiple values starting from the current position
+  /*! \brief Write multiple values starting from the specified position
    *         given a container.
    *
    * \tparam T
@@ -401,7 +401,7 @@ class Bin {
   }
 
 
-  /*! \brief Write multiple values starting from the current position
+  /*! \brief Write multiple values starting from the specified position
    *         given a container.
    *
    * If you want, this implementation allows you to specify the
