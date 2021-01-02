@@ -82,7 +82,7 @@ class Bin {
   /*! \brief Tells if the machine is little endian or big endian
    *
    * \return It returns a bool:\n 
-   * \reutnr true:  The machine uses little endian\n 
+   * \reutrn true:  The machine uses little endian\n 
    * \return false: The machine uses big endian
    */
   static bool is_default_little_endian() {
